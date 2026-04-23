@@ -1,6 +1,20 @@
 import 'package:flutter/material.dart';
+import 'services/ml_service.dart';
 
-void main() {
+void main() async {
+  // Ensure flutter bindings are initialized before calling native code
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize and load the ML model
+  MLService mlService = MLService();
+  await mlService.loadModel();
+
+  // Test with dummy patient data (pregnancies, glucose, bp, skin, insulin, bmi, pedigree, age)
+  List<double> dummyData = [6, 148, 72, 35, 0, 33.6, 0.627, 50];
+  double riskResult = await mlService.predictDiabetes(dummyData);
+
+  debugPrint('Test Prediction Result: $riskResult');
+
   runApp(const MyApp());
 }
 
