@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../widgets/custom_text_field.dart';
 import 'login_screen.dart'; // To navigate to login
+import 'verification_screen.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -149,7 +150,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 height: 56,
                 child: ElevatedButton(
                   onPressed: () {
-                    debugPrint('Create Account Clicked');
+                    // Navigate to Verification Screen
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const VerificationScreen()),
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryBlue,
