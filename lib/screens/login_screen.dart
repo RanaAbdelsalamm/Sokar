@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import 'registration_screen.dart';
+import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -156,30 +157,32 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       // 4. Log In Button
                       SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            debugPrint('Log In Clicked');
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryBlue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 0,
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (context) => const DashboardScreen()),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Text(
-                            'Log In',
-                            style: TextStyle(
-                              fontSize: 16, 
-                              fontWeight: FontWeight.bold, 
-                              color: Colors.white
-                            ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Log In',
+                          style: TextStyle(
+                            fontSize: 16, 
+                            fontWeight: FontWeight.bold, 
+                            color: Colors.white
                           ),
                         ),
                       ),
-                      
+                    ),
                       // 5. Spacer to push the footer to the bottom
                       const Spacer(),
                       
