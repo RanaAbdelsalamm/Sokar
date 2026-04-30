@@ -12,46 +12,46 @@ class LandingPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.whiteBackground,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
-              
-              // 1. Main Title
-              const Text(
-                'Your Smart Partner in\nDiabetes Care.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textMainTitle,
-                  height: 1.2,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 1. Main Title
+                const Text(
+                  'Your Smart Partner in\nDiabetes Care.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textMainTitle,
+                    height: 1.2,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              
-              // 2. Subtitle
-              const Text(
-                'Personalized AI insights to help you manage\nyour health with confidence.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: AppColors.textSubtitle,
-                  height: 1.5,
+                const SizedBox(height: 16),
+                
+                // 2. Subtitle
+                const Text(
+                  'Personalized AI insights to help you manage\nyour health with confidence.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textSubtitle,
+                    height: 1.5,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              
-              // 3. Grid of Features
-              Expanded(
-                child: GridView.count(
+                const SizedBox(height: 40),
+                
+                // 3. Grid of Features
+                GridView.count(
+                  shrinkWrap: true,
                   crossAxisCount: 2,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 0.85, // Adjust to make cards taller or shorter
-                  physics: const NeverScrollableScrollPhysics(), // Disable internal scroll
+                  childAspectRatio: 0.85, 
+                  physics: const NeverScrollableScrollPhysics(), 
                   children: const [
                     FeatureCard(
                       icon: Icons.bar_chart_rounded,
@@ -75,77 +75,75 @@ class LandingPage extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-              
-              // 4. Primary Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  // 1. The onPressed goes right here
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RegistrationScreen()),
-                    );
-                  },
-                  // 2. Then the style
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    elevation: 0,
-                  ),
-                  // 3. Then the child (text)
-                  child: const Text(
-                    'Create Your Account',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-              
-              // 5. Login Link
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    'Already have an account? ',
-                    style: TextStyle(color: AppColors.textSubtitle),
-                  ),
-                  GestureDetector(
-                    onTap: () {
+                const SizedBox(height: 48),
+                // 4. Primary Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const LoginScreen()),
+                        MaterialPageRoute(builder: (context) => const RegistrationScreen()),
                       );
                     },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryBlue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      elevation: 0,
+                    ),
                     child: const Text(
-                      'Log In',
+                      'Create Your Account',
                       style: TextStyle(
-                        color: AppColors.primaryBlue,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
                     ),
                   ),
-                ],
-              ),
-              
-              // 6. Terms & Privacy
-              const Text(
-                'By creating an account, you agree to our Terms of Service and\nPrivacy Policy.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textBody,
                 ),
-              ),
-              const SizedBox(height: 10),
-            ],
+                const SizedBox(height: 16),
+                
+                // 5. Login Link
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'Already have an account? ',
+                      style: TextStyle(color: AppColors.textSubtitle),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const LoginScreen()),
+                        );
+                      },
+                      child: const Text(
+                        'Log In',
+                        style: TextStyle(
+                          color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                // 6. Terms & Privacy
+                const Text(
+                  'By creating an account, you agree to our Terms of Service and\nPrivacy Policy.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textBody,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
