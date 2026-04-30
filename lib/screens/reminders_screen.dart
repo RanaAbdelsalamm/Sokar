@@ -10,8 +10,15 @@ class MedReminder {
   final String dosage;
   final TimeOfDay time;
   final DateTime date;
-  bool isActive;
-  bool? isTaken; 
+  bool isDaily;
+  List<int> repeatDays; 
+  
+  Set<String> inactiveDates; 
+  Set<String> deletedDates; 
+  Map<String, bool> history; 
+
+  bool isActive; 
+  bool? isTaken;
 
   MedReminder({
     required this.id,
@@ -20,45 +27,178 @@ class MedReminder {
     required this.dosage,
     required this.time,
     required this.date,
+    this.isDaily = false,
+    this.repeatDays = const [],
+    Set<String>? inactiveDates,
+    Set<String>? deletedDates,
+    Map<String, bool>? history,
     this.isActive = true,
     this.isTaken,
-  });
+  }) : inactiveDates = inactiveDates ?? {},
+       deletedDates = deletedDates ?? {},
+       history = history ?? {};
 }
 
 class RemindersScreen extends StatefulWidget {
   const RemindersScreen({super.key});
 
   @override
-  State<RemindersScreen> createState() => RemindersScreenState(); 
+  State<RemindersScreen> createState() => RemindersScreenState();
 }
 
 class RemindersScreenState extends State<RemindersScreen> {
-  int _selectedTabIndex = 0; 
-  bool _showSmartSuggestion = true;
+  int _selectedTabIndex = 0;
+  final PageController _pageController = PageController();
 
   final List<MedReminder> _reminders = [
     MedReminder(
       id: '1',
-      icon: Icons.medication_outlined,
+      icon: Icons.medication,
       title: 'Metformin',
-      dosage: '500mg',
+      dosage: '500 mg',
       time: const TimeOfDay(hour: 8, minute: 0),
-      date: DateTime.now(), 
+      date: DateTime.now(),
+      isDaily: true,
     ),
   ];
 
-  String _getMonthName(int month) {
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  String _formatHeader(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final targetDate = DateTime(date.year, date.month, date.day);
+
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months[month - 1];
+    const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    String dayStr;
+    if (targetDate == today) {
+      dayStr = 'Today';
+    } else if (targetDate == tomorrow) {
+      dayStr = 'Tomorrow';
+    } else {
+      dayStr = weekdays[date.weekday - 1];
+    }
+
+    return '$dayStr, ${date.day} ${months[date.month - 1]}';
+  }
+
+  String _getRepeatLabel(bool isDaily, List<int> days) {
+    if (isDaily) return 'Daily';
+    if (days.isEmpty) return 'Once';
+
+    const shortDays = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    List<String> selected = days.map((d) => shortDays[d]).toList();
+    if (selected.length > 2) return '${selected.take(2).join(', ')}...';
+    return selected.join(', ');
+  }
+
+  void _showRepeatPicker(BuildContext context, bool currentIsDaily, List<int> currentDays, Function(bool, List<int>) onSave) {
+    bool tempDaily = currentIsDaily;
+    List<int> tempDays = List.from(currentDays);
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              contentPadding: const EdgeInsets.only(top: 16, bottom: 8),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Repeat', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
+                  TextButton(
+                    onPressed: () {
+                      onSave(tempDaily, tempDays);
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Save', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                  )
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        title: const Text('Once (Today)', style: TextStyle(color: AppColors.textMainTitle, fontWeight: FontWeight.w600)),
+                        trailing: (!tempDaily && tempDays.isEmpty) ? const Icon(Icons.check, color: AppColors.primaryBlue) : null,
+                        onTap: () {
+                          setDialogState(() {
+                            tempDaily = false;
+                            tempDays.clear();
+                          });
+                        },
+                      ),
+                      ListTile(
+                        title: const Text('Daily', style: TextStyle(color: AppColors.textMainTitle, fontWeight: FontWeight.w600)),
+                        trailing: tempDaily ? const Icon(Icons.check, color: AppColors.primaryBlue) : null,
+                        onTap: () {
+                          setDialogState(() {
+                            tempDaily = true;
+                            tempDays.clear();
+                          });
+                        },
+                      ),
+                      const Divider(height: 1, color: AppColors.bgTabInactive),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('SPECIFIC DAYS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSubtitle)),
+                        ),
+                      ),
+                      ...List.generate(7, (index) {
+                        int dayValue = index + 1;
+                        bool isSelected = tempDays.contains(dayValue);
+                        return CheckboxListTile(
+                          title: Text(dayNames[index], style: const TextStyle(color: AppColors.textMainTitle)),
+                          value: isSelected,
+                          activeColor: AppColors.primaryBlue,
+                          controlAffinity: ListTileControlAffinity.trailing,
+                          onChanged: (bool? value) {
+                            setDialogState(() {
+                              tempDaily = false; 
+                              if (value == true) {
+                                tempDays.add(dayValue);
+                              } else {
+                                tempDays.remove(dayValue);
+                              }
+                            });
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      }
+    );
   }
 
   void showAddReminderSheet(BuildContext context) {
     String selectedType = 'Pill';
-    IconData selectedIcon = Icons.medication_outlined;
+    IconData selectedIcon = Icons.medication;
     final TextEditingController nameController = TextEditingController();
     final TextEditingController dosageController = TextEditingController();
     TimeOfDay selectedTime = TimeOfDay.now();
-    DateTime selectedDate = DateTime.now();
+
+    bool isDaily = false;
+    List<int> repeatDays = [];
 
     showModalBottomSheet(
       context: context,
@@ -67,10 +207,9 @@ class RemindersScreenState extends State<RemindersScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            
-          
             String unitText = selectedType == 'Liquid' ? 'ml' : selectedType == 'Insulin' ? 'units' : 'mg';
-            String hintText = selectedType == 'Liquid' ? 'e.g. NyQuil' : 'e.g. Metformin';
+            String hintText = selectedType == 'Liquid' ? 'Enter liquid name' : selectedType == 'Insulin' ? 'Enter insulin name' : 'Enter pill name';
+            String repeatLabel = _getRepeatLabel(isDaily, repeatDays);
 
             return Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -84,17 +223,15 @@ class RemindersScreenState extends State<RemindersScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: AppColors.textMainTitle)),
-                        const SizedBox(width: 48), 
+                        const SizedBox(width: 48),
                       ],
                     ),
                     const SizedBox(height: 16),
 
-                  
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
@@ -112,21 +249,22 @@ class RemindersScreenState extends State<RemindersScreen> {
                             ),
                             const SizedBox(height: 24),
 
-                            // شرط: لو انسولين هنخفي خانة الاسم خالص
-                            if (selectedType != 'Insulin') ...[
-                              const Text('MEDICATION NAME', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSubtitle)),
-                              const SizedBox(height: 8),
-                              TextField(
+                            const Text('MEDICATION NAME', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSubtitle)),
+                            const SizedBox(height: 8),
+                            Container(
+                              decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)]),
+                              child: TextField(
                                 controller: nameController,
                                 decoration: InputDecoration(
                                   hintText: hintText,
+                                  hintStyle: TextStyle(color: AppColors.textSubtitle.withValues(alpha: 0.5)),
                                   filled: true,
-                                  fillColor: const Color(0xFFF2F4F7),
+                                  fillColor: Colors.white,
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                                 ),
                               ),
-                              const SizedBox(height: 24),
-                            ],
+                            ),
+                            const SizedBox(height: 24),
 
                             Row(
                               children: [
@@ -136,20 +274,24 @@ class RemindersScreenState extends State<RemindersScreen> {
                                     children: [
                                       const Text('DOSAGE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSubtitle)),
                                       const SizedBox(height: 8),
-                                      TextField(
-                                        controller: dosageController,
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                        decoration: InputDecoration(
-                                          hintText: '500',
-                                          filled: true,
-                                          fillColor: const Color(0xFFF2F4F7),
-                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                                          suffixIcon: Container(
-                                            margin: const EdgeInsets.all(8),
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(color: AppColors.bgBlueCard, borderRadius: BorderRadius.circular(8)),
-                                            child: Text(unitText, style: const TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                                      Container(
+                                        decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)]),
+                                        child: TextField(
+                                          controller: dosageController,
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                          decoration: InputDecoration(
+                                            hintText: '00',
+                                            hintStyle: TextStyle(color: AppColors.textSubtitle.withValues(alpha: 0.5)),
+                                            filled: true,
+                                            fillColor: Colors.white,
+                                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                            suffixIcon: Container(
+                                              margin: const EdgeInsets.all(8),
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(color: AppColors.bgBlueCard, borderRadius: BorderRadius.circular(8)),
+                                              child: Text(unitText, style: const TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -161,26 +303,29 @@ class RemindersScreenState extends State<RemindersScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text('DATE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSubtitle)),
+                                      const Text('REPEAT', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSubtitle)),
                                       const SizedBox(height: 8),
                                       GestureDetector(
-                                        onTap: () async {
-                                          final DateTime? picked = await showDatePicker(
-                                            context: context,
-                                            initialDate: selectedDate,
-                                            firstDate: DateTime.now(),
-                                            lastDate: DateTime(2030),
-                                          );
-                                          if (picked != null) setSheetState(() => selectedDate = picked);
+                                        onTap: () {
+                                          _showRepeatPicker(context, isDaily, repeatDays, (daily, days) {
+                                            setSheetState(() {
+                                              isDaily = daily;
+                                              repeatDays = days;
+                                            });
+                                          });
                                         },
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                          decoration: BoxDecoration(color: const Color(0xFFF2F4F7), borderRadius: BorderRadius.circular(16)),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(16),
+                                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)]
+                                          ),
                                           child: Row(
                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
-                                              Text('${selectedDate.day} ${_getMonthName(selectedDate.month)}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
-                                              const Icon(Icons.calendar_today, color: AppColors.primaryBlue, size: 20),
+                                              Expanded(child: Text(repeatLabel, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textMainTitle), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                              const Icon(Icons.repeat, color: AppColors.primaryBlue, size: 20),
                                             ],
                                           ),
                                         ),
@@ -216,25 +361,22 @@ class RemindersScreenState extends State<RemindersScreen> {
                         ),
                       ),
                     ),
-                    
-                    // Save Button (Fixed at the bottom)
+
                     SizedBox(
                       width: double.infinity, height: 56,
                       child: ElevatedButton(
                         onPressed: () {
-                          bool isValid = dosageController.text.isNotEmpty && (selectedType == 'Insulin' || nameController.text.isNotEmpty);
-                          
-                          if (isValid) {
-                            String finalName = selectedType == 'Insulin' ? 'Insulin' : nameController.text;
-                            
+                          if (nameController.text.isNotEmpty && dosageController.text.isNotEmpty) {
                             setState(() {
                               _reminders.add(MedReminder(
                                 id: DateTime.now().toString(),
                                 icon: selectedIcon,
-                                title: finalName,
+                                title: nameController.text,
                                 dosage: '${dosageController.text} $unitText',
                                 time: selectedTime,
-                                date: selectedDate,
+                                date: DateTime.now(), 
+                                isDaily: isDaily,
+                                repeatDays: repeatDays,
                               ));
                             });
                             Navigator.pop(context);
@@ -305,27 +447,39 @@ class RemindersScreenState extends State<RemindersScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            Expanded(child: _buildTabContent()),
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (index) {
+                  setState(() {
+                    _selectedTabIndex = index;
+                  });
+                },
+                children: [
+                  _buildUpcomingView(),
+                  _buildAllRemindersView(),
+                  _buildHistoryView(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTabContent() {
-    switch (_selectedTabIndex) {
-      case 0: return _buildUpcomingView();
-      case 1: return _buildAllRemindersView();
-      case 2: return _buildHistoryView();
-      default: return _buildUpcomingView();
-    }
-  }
-
   Widget _buildTabButton(String title, int index) {
     final bool isActive = _selectedTabIndex == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedTabIndex = index),
+        onTap: () {
+          setState(() => _selectedTabIndex = index);
+          _pageController.animateToPage(
+            index,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(color: isActive ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(20), boxShadow: isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)] : []),
@@ -336,44 +490,170 @@ class RemindersScreenState extends State<RemindersScreen> {
     );
   }
 
+  List<MedReminder> _generateInstancesForDateRange(DateTime start, DateTime end, bool onlyPending) {
+    List<MedReminder> instances = [];
+    
+    for (var med in _reminders) {
+      DateTime medStart = DateTime(med.date.year, med.date.month, med.date.day);
+      DateTime current = start.isBefore(medStart) ? medStart : start;
+      
+      while (!current.isAfter(end)) {
+        String dateKey = '${current.year}-${current.month.toString().padLeft(2,'0')}-${current.day.toString().padLeft(2,'0')}';
+        
+        if (med.deletedDates.contains(dateKey)) {
+          current = current.add(const Duration(days: 1));
+          continue;
+        }
+
+        bool isHistory = med.history.containsKey(dateKey);
+        
+        if (onlyPending && isHistory) {
+          current = current.add(const Duration(days: 1));
+          continue;
+        }
+        
+        bool shouldAdd = false;
+        
+        if (med.isDaily) {
+          shouldAdd = true;
+        } else if (med.repeatDays.isNotEmpty) {
+          if (med.repeatDays.contains(current.weekday)) {
+            shouldAdd = true;
+          }
+        } else {
+          if (current.isAtSameMomentAs(medStart)) {
+            shouldAdd = true;
+          }
+        }
+        
+        if (shouldAdd) {
+          instances.add(MedReminder(
+            id: '${med.id}_$dateKey',
+            icon: med.icon,
+            title: med.title,
+            dosage: med.dosage,
+            time: med.time,
+            date: current,
+            isDaily: med.isDaily,
+            repeatDays: med.repeatDays,
+            isActive: !med.inactiveDates.contains(dateKey),
+            isTaken: med.history[dateKey],
+          ));
+        }
+        
+        current = current.add(const Duration(days: 1));
+      }
+    }
+    return instances;
+  }
+
   Widget _buildUpcomingView() {
     final now = DateTime.now();
-    final upcomingMeds = _reminders.where((r) => r.isTaken == null && (r.date.day == now.day || r.date.day == now.add(const Duration(days: 1)).day)).toList();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    final upcomingMeds = _generateInstancesForDateRange(today, tomorrow, true);
+
+    upcomingMeds.sort((a, b) {
+      int dateCmp = a.date.compareTo(b.date);
+      if (dateCmp != 0) return dateCmp;
+      return (a.time.hour * 60 + a.time.minute).compareTo(b.time.hour * 60 + b.time.minute);
+    });
+
+    Map<String, List<MedReminder>> grouped = {};
+    for (var med in upcomingMeds) {
+      String header = _formatHeader(med.date);
+      if (!grouped.containsKey(header)) grouped[header] = [];
+      grouped[header]!.add(med);
+    }
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       children: [
-        if (_showSmartSuggestion) ...[
-          _buildSmartSuggestion(),
-          const SizedBox(height: 24),
-        ],
-        const Text('Upcoming', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
-        const SizedBox(height: 16),
         if (upcomingMeds.isEmpty)
-          const Center(child: Padding(padding: EdgeInsets.all(20.0), child: Text("No upcoming reminders.", style: TextStyle(color: AppColors.textSubtitle)))),
-        ...upcomingMeds.map((med) => _buildSwipeableCard(med)),
+          const Center(child: Padding(padding: EdgeInsets.all(20.0), child: Text("No upcoming reminders for today or tomorrow.", style: TextStyle(color: AppColors.textSubtitle)))),
+        
+        ...grouped.entries.map((entry) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(entry.key, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
+              const SizedBox(height: 16),
+              ...entry.value.map((med) => _buildSwipeableCard(med)),
+              const SizedBox(height: 8),
+            ],
+          );
+        }),
         const SizedBox(height: 100),
       ],
     );
   }
 
   Widget _buildAllRemindersView() {
-    final pendingMeds = _reminders.where((r) => r.isTaken == null).toList();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endOfWeek = today.add(const Duration(days: 7));
+
+    final pendingMeds = _generateInstancesForDateRange(today, endOfWeek, true);
+    
+    pendingMeds.sort((a, b) {
+      int dateCmp = a.date.compareTo(b.date);
+      if (dateCmp != 0) return dateCmp;
+      return (a.time.hour * 60 + a.time.minute).compareTo(b.time.hour * 60 + b.time.minute);
+    });
+
+    Map<String, List<MedReminder>> grouped = {};
+    for (var med in pendingMeds) {
+      String header = _formatHeader(med.date);
+      if (!grouped.containsKey(header)) grouped[header] = [];
+      grouped[header]!.add(med);
+    }
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       children: [
-        const Text('All Scheduled', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
-        const SizedBox(height: 16),
         if (pendingMeds.isEmpty)
           const Center(child: Padding(padding: EdgeInsets.all(20.0), child: Text("No scheduled reminders.", style: TextStyle(color: AppColors.textSubtitle)))),
-        ...pendingMeds.map((med) => _buildSwipeableCard(med)),
+        
+        ...grouped.entries.map((entry) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(entry.key, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
+              const SizedBox(height: 16),
+              ...entry.value.map((med) => _buildSwipeableCard(med)),
+              const SizedBox(height: 8),
+            ],
+          );
+        }),
         const SizedBox(height: 100),
       ],
     );
   }
 
   Widget _buildHistoryView() {
-    final historyMeds = _reminders.where((r) => r.isTaken != null).toList();
+    List<MedReminder> historyMeds = [];
+    for (var med in _reminders) {
+      med.history.forEach((dateKey, isTaken) {
+        final parts = dateKey.split('-');
+        DateTime d = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+        
+        if (!med.deletedDates.contains(dateKey)) {
+          historyMeds.add(MedReminder(
+            id: '${med.id}_$dateKey',
+            icon: med.icon, title: med.title, dosage: med.dosage, time: med.time, date: d,
+            isDaily: med.isDaily, repeatDays: med.repeatDays, isTaken: isTaken,
+          ));
+        }
+      });
+    }
+    
+    historyMeds.sort((a, b) {
+      int dateCmp = b.date.compareTo(a.date);
+      if (dateCmp != 0) return dateCmp;
+      return (b.time.hour * 60 + b.time.minute).compareTo(a.time.hour * 60 + a.time.minute);
+    });
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       children: [
@@ -392,16 +672,33 @@ class RemindersScreenState extends State<RemindersScreen> {
       padding: const EdgeInsets.only(bottom: 16),
       child: Dismissible(
         key: Key(med.id),
-        direction: DismissDirection.endToStart,
+        direction: DismissDirection.horizontal,
+        
         background: Container(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 24),
+          decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(24)),
+          child: const Icon(Icons.close, color: Colors.white, size: 32),
+        ),
+        
+        secondaryBackground: Container(
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 24),
-          decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(24)),
-          child: const Icon(Icons.delete_outline, color: Colors.white, size: 32),
+          decoration: BoxDecoration(color: AppColors.textSuccessGreen, borderRadius: BorderRadius.circular(24)),
+          child: const Icon(Icons.check, color: Colors.white, size: 32),
         ),
+        
         onDismissed: (direction) {
           setState(() {
-            _reminders.removeWhere((r) => r.id == med.id);
+            String parentId = med.id.split('_')[0];
+            String dateKey = med.id.split('_')[1];
+            final originalMed = _reminders.firstWhere((r) => r.id == parentId);
+            
+            if (direction == DismissDirection.startToEnd) {
+              originalMed.history[dateKey] = false; 
+            } else {
+              originalMed.history[dateKey] = true;  
+            }
           });
         },
         child: Container(
@@ -416,7 +713,19 @@ class RemindersScreenState extends State<RemindersScreen> {
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(med.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text(med.dosage, style: const TextStyle(color: AppColors.textSubtitle, fontSize: 13))])),
                   CupertinoSwitch(
                     value: med.isActive, 
-                    onChanged: (val) => setState(() => med.isActive = val), 
+                    onChanged: (val) {
+                      setState(() {
+                        String parentId = med.id.split('_')[0];
+                        String dateKey = med.id.split('_')[1];
+                        final originalMed = _reminders.firstWhere((r) => r.id == parentId);
+                        
+                        if (val) {
+                          originalMed.inactiveDates.remove(dateKey);
+                        } else {
+                          originalMed.inactiveDates.add(dateKey);
+                        }
+                      });
+                    }, 
                     activeTrackColor: AppColors.primaryBlue
                   ),
                 ],
@@ -424,14 +733,34 @@ class RemindersScreenState extends State<RemindersScreen> {
               const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: AppColors.bgTabInactive)),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Row(children: [const Icon(Icons.access_time, size: 16, color: AppColors.textSubtitle), const SizedBox(width: 4), Text(med.time.format(context), style: const TextStyle(color: AppColors.textSubtitle, fontWeight: FontWeight.w600))]), 
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      IconButton(onPressed: () => setState(() => med.isTaken = true), icon: const Icon(Icons.check_circle_outline, color: AppColors.textSuccessGreen)),
-                      IconButton(onPressed: () => setState(() => med.isTaken = false), icon: const Icon(Icons.cancel_outlined, color: Colors.red)),
+                      const Icon(Icons.access_time, size: 16, color: AppColors.textSubtitle), 
+                      const SizedBox(width: 4), 
+                      Text(med.time.format(context), style: const TextStyle(color: AppColors.textSubtitle, fontWeight: FontWeight.w600)),
+                      const SizedBox(width: 8),
+                      Container(width: 4, height: 4, decoration: const BoxDecoration(color: AppColors.textSubtitle, shape: BoxShape.circle)),
+                      const SizedBox(width: 8),
+                      Text(_getRepeatLabel(med.isDaily, med.repeatDays).toUpperCase(), style: const TextStyle(color: AppColors.textSubtitle, fontWeight: FontWeight.bold, fontSize: 11)),
                     ],
-                  )
+                  ), 
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: AppColors.textSubtitle, size: 22),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      setState(() {
+                        String parentId = med.id.split('_')[0];
+                        String dateKey = med.id.split('_')[1];
+                        final originalMed = _reminders.firstWhere((r) => r.id == parentId);
+                        
+                        originalMed.deletedDates.add(dateKey);
+                      });
+                    },
+                  ),
                 ]
               ),
             ],
@@ -449,52 +778,18 @@ class RemindersScreenState extends State<RemindersScreen> {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: Row(
         children: [
-          Icon(isTaken ? Icons.check_circle : Icons.cancel, color: isTaken ? AppColors.primaryBlue : Colors.red, size: 24),
+          Icon(isTaken ? Icons.check_circle : Icons.cancel, color: isTaken ? AppColors.textSuccessGreen : Colors.red, size: 24),
           const SizedBox(width: 16),
-          Expanded(child: Text(med.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isTaken ? AppColors.primaryBlue : Colors.red, decoration: TextDecoration.lineThrough, decorationThickness: 2))),
-          Text(med.time.format(context), style: const TextStyle(color: AppColors.textSubtitle, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSmartSuggestion() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFFEBF4FA), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.1))),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const Icon(Icons.auto_awesome, color: AppColors.primaryBlue, size: 28),
-          const SizedBox(width: 16),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Smart Suggestion', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
-                SizedBox(height: 4),
-                Text('You usually take Lantus before dinner. Set a reminder for 7:00 PM?', style: TextStyle(fontSize: 13, color: AppColors.textSubtitle, height: 1.4)),
+                Text(med.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isTaken ? AppColors.textSuccessGreen : Colors.red, decoration: TextDecoration.lineThrough, decorationThickness: 2)),
+                Text(_formatHeader(med.date), style: const TextStyle(color: AppColors.textSubtitle, fontSize: 11)),
               ],
-            )
+            ),
           ),
-          const SizedBox(width: 16), 
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _reminders.add(MedReminder(
-                  id: DateTime.now().toString(),
-                  icon: Icons.vaccines_outlined,
-                  title: 'Lantus Insulin',
-                  dosage: '10 units',
-                  time: const TimeOfDay(hour: 19, minute: 0),
-                  date: DateTime.now(),
-                ));
-                _showSmartSuggestion = false; 
-              });
-            }, 
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)), 
-            child: const Text('Set', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold))
-          ),
+          Text(med.time.format(context), style: const TextStyle(color: AppColors.textSubtitle, fontSize: 13)),
         ],
       ),
     );
