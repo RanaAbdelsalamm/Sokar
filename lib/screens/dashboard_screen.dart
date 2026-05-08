@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import '../constants/app_colors.dart';
 import 'plan_screen.dart'; 
 import 'reminders_screen.dart'; 
@@ -73,6 +74,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _readingStatus = newStatus;
       _readingStatusColor = newColor;
     });
+  }
+
+  void _shareReport() {
+    final String reportText = '''
+📊 Glucose Dashboard Report
+---------------------------
+Latest Reading: $_latestReading mg/dL ($_readingStatus)
+Average Glucose: 125 mg/dL
+Time in Range: 85%
+Est. HbA1c: 6.5%
+
+Tracked via AI Diabetes Assistant
+''';
+    
+    // التحديث الجديد للمكتبة عشان الإيرور الأحمر يختفي
+    SharePlus.instance.share(
+      ShareParams(
+        text: reportText,
+        subject: 'My Glucose Report',
+      )
+    );
   }
 
   void _showAddReadingSheet() {
@@ -189,7 +211,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       extendBody: true,
       backgroundColor: AppColors.backgroundLight,
-      appBar: _selectedIndex == 0 ? AppBar(backgroundColor: AppColors.backgroundLight, elevation: 0, centerTitle: true, title: const Text('Glucose Dashboard', style: TextStyle(color: AppColors.textMainTitle, fontSize: 20, fontWeight: FontWeight.bold)), automaticallyImplyLeading: false) : null,
+      appBar: _selectedIndex == 0 ? AppBar(
+        backgroundColor: AppColors.backgroundLight, 
+        elevation: 0, 
+        centerTitle: true, 
+        title: const Text('Glucose Dashboard', style: TextStyle(color: AppColors.textMainTitle, fontSize: 20, fontWeight: FontWeight.bold)), 
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share, color: AppColors.textMainTitle),
+            onPressed: _shareReport,
+          ),
+          const SizedBox(width: 8),
+        ],
+      ) : null,
       
       body: IndexedStack(
         index: _selectedIndex,
