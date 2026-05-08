@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 import '../constants/app_colors.dart';
 import 'upload_file_screen.dart'; 
 import 'login_screen.dart';
@@ -18,6 +20,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   
   int _age = 22; 
   int _weight = 63;
+  
+  File? _profileImage;
 
   void _showEditDialog(String title, int currentValue, String unit, Function(int) onSave) {
     final TextEditingController controller = TextEditingController(text: currentValue.toString());
@@ -97,8 +101,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _openGallery() {
-    debugPrint("Gallery picker triggered");
+  Future<void> _openGallery() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+    );
+
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _profileImage = File(result.files.single.path!);
+      });
+    }
   }
 
   @override
@@ -138,8 +150,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             offset: const Offset(0, 4),
                           )
                         ],
+                        image: _profileImage != null
+                            ? DecorationImage(
+                                image: FileImage(_profileImage!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
                       ),
-                      child: const Icon(Icons.person, size: 60, color: AppColors.primaryBlue),
+                      child: _profileImage == null
+                          ? const Icon(Icons.person, size: 60, color: AppColors.primaryBlue)
+                          : null,
                     ),
                     GestureDetector(
                       onTap: _openGallery,
