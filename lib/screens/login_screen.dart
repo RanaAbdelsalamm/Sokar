@@ -3,6 +3,7 @@ import '../constants/app_colors.dart';
 import 'registration_screen.dart';
 import 'dashboard_screen.dart';
 import 'landing_page.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -119,6 +120,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           GestureDetector(
                             onTap: () {
                               debugPrint('Forgot Password Clicked');
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                              ); 
                             },
                             child: const Text(
                               'Forgot Password?',

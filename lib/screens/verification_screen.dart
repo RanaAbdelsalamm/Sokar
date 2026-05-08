@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../constants/app_colors.dart';
 import 'verification_success_screen.dart';
+import 'create_new_password_screen.dart';
 
 class VerificationScreen extends StatefulWidget {
-  const VerificationScreen({super.key});
+  final bool isPasswordReset;
+
+  const VerificationScreen({super.key, this.isPasswordReset = false});
 
   @override
   State<VerificationScreen> createState() => _VerificationScreenState();
@@ -11,19 +15,71 @@ class VerificationScreen extends StatefulWidget {
 
 class _VerificationScreenState extends State<VerificationScreen> {
   bool isLoading = false;
+  Timer? _timer;
+  int _start = 59;
+  bool _canResend = true;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void startTimer() {
+    setState(() {
+      _canResend = false;
+      _start = 59;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'Verification email resent successfully!', 
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)
+        ),
+        backgroundColor: AppColors.textMainTitle.withValues(alpha: 0.9),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      (Timer timer) {
+        if (_start == 0) {
+          setState(() {
+            _canResend = true;
+            timer.cancel();
+          });
+        } else {
+          setState(() {
+            _start--;
+          });
+        }
+      },
+    );
+  }
 
   void handleVerificationCheck() async {
     setState(() => isLoading = true);
     
-    // Simulating network request (Firebase Check)
     await Future.delayed(const Duration(seconds: 2));
     
     if (mounted) {
       setState(() => isLoading = false);
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const VerificationSuccessScreen()),
-      );
+      
+      if (widget.isPasswordReset) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CreateNewPasswordScreen()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const VerificationSuccessScreen()),
+        );
+      }
     }
   }
 
@@ -54,7 +110,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Main Content Card
                     Container(
                       padding: const EdgeInsets.all(32.0),
                       decoration: BoxDecoration(
@@ -104,7 +159,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
                           ),
                           const SizedBox(height: 24),
                           
-                          // Restored: Didn't receive the email? Resend Link
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -112,19 +166,28 @@ class _VerificationScreenState extends State<VerificationScreen> {
                                 'Didn\'t receive the email? ', 
                                 style: TextStyle(color: AppColors.textSubtitle, fontSize: 13)
                               ),
-                              GestureDetector(
-                                onTap: () {
-                                  debugPrint('Resend Link Clicked');
-                                },
-                                child: const Text(
-                                  'Resend Link',
-                                  style: TextStyle(
-                                    color: AppColors.primaryBlue, 
-                                    fontWeight: FontWeight.bold, 
-                                    fontSize: 13
-                                  ),
-                                ),
-                              ),
+                              _canResend
+                                  ? GestureDetector(
+                                      onTap: () {
+                                        startTimer();
+                                      },
+                                      child: const Text(
+                                        'Resend Link',
+                                        style: TextStyle(
+                                          color: AppColors.primaryBlue, 
+                                          fontWeight: FontWeight.bold, 
+                                          fontSize: 13
+                                        ),
+                                      ),
+                                    )
+                                  : Text(
+                                      'Wait 00:${_start.toString().padLeft(2, '0')}',
+                                      style: const TextStyle(
+                                        color: AppColors.textSubtitle, 
+                                        fontWeight: FontWeight.bold, 
+                                        fontSize: 13
+                                      ),
+                                    ),
                             ],
                           ),
                         ],
@@ -132,7 +195,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     ),
                     const SizedBox(height: 24),
                     
-                    // Bottom Info Box with full text restored
                     Container(
                       padding: const EdgeInsets.all(20.0),
                       decoration: BoxDecoration(
@@ -145,8 +207,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
                         children: [
                           const Icon(Icons.info_outline, color: AppColors.primaryBlue, size: 20),
                           const SizedBox(width: 12),
-                          Expanded(
-                            child: const Text(
+                          const Expanded(
+                            child: Text(
                               'Verification ensures your medical data remains private and secure. Check your spam folder if you don\'t see it within 2 minutes.', 
                               style: TextStyle(color: AppColors.textSubtitle, fontSize: 13, height: 1.5)
                             )
