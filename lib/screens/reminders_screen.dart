@@ -1,8 +1,69 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 import '../constants/app_colors.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 
+// --- Local Notifications Setup ---
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+Future<void> initializeNotifications() async {
+  tz.initializeTimeZones();
+  
+  try {
+    final TimezoneInfo currentTimeZone = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(currentTimeZone as String));
+  } catch (e) {
+    tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
+  }
+  
+const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('notification_icon');
+const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings();
+  
+  const InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsIOS,
+  );
+  
+  await flutterLocalNotificationsPlugin.initialize(
+    settings: initializationSettings,
+  );
+  
+  flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+}
+
+Future<void> scheduleNotification(int id, String title, String body, TimeOfDay time) async {
+  final now = DateTime.now();
+  var scheduledDate = DateTime(now.year, now.month, now.day, time.hour, time.minute);
+  
+  if (scheduledDate.isBefore(now)) {
+    scheduledDate = scheduledDate.add(const Duration(days: 1));
+  }
+
+  const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
+    'med_reminder_channel',
+    'Medication Reminders',
+    channelDescription: 'Notifications for your medication schedule',
+    importance: Importance.max,
+    priority: Priority.high,
+  );
+  
+  const NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
+  
+  await flutterLocalNotificationsPlugin.zonedSchedule(
+    id: id,
+    title: title,
+    body: body,
+    scheduledDate: tz.TZDateTime.from(scheduledDate, tz.local),
+    notificationDetails: platformChannelSpecifics,
+    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  );
+}
+
+// --- Reminder Models ---
 class MedReminder {
   final String id;
   final IconData icon;
@@ -39,6 +100,7 @@ class MedReminder {
        history = history ?? {};
 }
 
+// --- Reminders Screen ---
 class RemindersScreen extends StatefulWidget {
   const RemindersScreen({super.key});
 
@@ -61,6 +123,12 @@ class RemindersScreenState extends State<RemindersScreen> {
       isDaily: true,
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    initializeNotifications();
+  }
 
   @override
   void dispose() {
@@ -367,18 +435,29 @@ class RemindersScreenState extends State<RemindersScreen> {
                       child: ElevatedButton(
                         onPressed: () {
                           if (nameController.text.isNotEmpty && dosageController.text.isNotEmpty) {
+                            String newId = DateTime.now().toString();
+                            String dosageText = '${dosageController.text} $unitText';
+                            
                             setState(() {
                               _reminders.add(MedReminder(
-                                id: DateTime.now().toString(),
+                                id: newId,
                                 icon: selectedIcon,
                                 title: nameController.text,
-                                dosage: '${dosageController.text} $unitText',
+                                dosage: dosageText,
                                 time: selectedTime,
                                 date: DateTime.now(), 
                                 isDaily: isDaily,
                                 repeatDays: repeatDays,
                               ));
                             });
+                            
+                            scheduleNotification(
+                              DateTime.now().millisecondsSinceEpoch.remainder(100000), 
+                              'Time for your Medication!', 
+                              'It\'s time to take $dosageText of ${nameController.text}.', 
+                              selectedTime
+                            );
+                            
                             Navigator.pop(context);
                           }
                         },
