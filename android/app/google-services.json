@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "787745307493",
+    "project_id": "sokar-d14c2",
+    "storage_bucket": "sokar-d14c2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:787745307493:android:b4a748acae7a6e6cf83f8c",
+        "android_client_info": {
+          "package_name": "com.example.flutter_sokar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCx7CBhUregoKvg1k1pec0XSpqnpJf8Hq4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
