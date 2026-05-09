@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '../constants/app_colors.dart';
+import '../services/auth_service.dart';
 import 'upload_file_screen.dart'; 
 import 'login_screen.dart';
 
@@ -14,14 +16,57 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final String _firstName = "Rana";
-  final String _fullName = "Rana Abdelsalam";
-  final String _gender = "Female";
-  
-  int _age = 22; 
-  int _weight = 63;
+  // Variables to hold dynamic data
+  bool _isLoading = true;
+  String _firstName = "";
+  String _fullName = "";
+  String _gender = "";
+  int _age = 0; 
+  int _weight = 0;
   
   File? _profileImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData(); // Fetch data when screen opens
+  }
+
+  // Fetch data from Firebase
+  Future<void> _loadProfileData() async {
+    Map<String, dynamic>? data = await AuthService().getUserData();
+    
+    if (data != null && mounted) {
+      setState(() {
+        _fullName = data['name'] ?? 'Unknown User';
+        _firstName = _fullName.split(' ').first; // Extract first name
+        _gender = data['gender'] ?? 'Not Specified';
+        _weight = (data['weight'] ?? 0).toInt();
+
+        // Calculate age from birthDate Timestamp
+        if (data['birthDate'] != null) {
+          DateTime birthDate = (data['birthDate'] as Timestamp).toDate();
+          _age = _calculateAge(birthDate);
+        }
+        
+        _isLoading = false;
+      });
+    } else if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Helper method to calculate accurate age
+  int _calculateAge(DateTime birthDate) {
+    DateTime today = DateTime.now();
+    int age = today.year - birthDate.year;
+    if (today.month < birthDate.month || (today.month == birthDate.month && today.day < birthDate.day)) {
+      age--;
+    }
+    return age;
+  }
 
   void _showEditDialog(String title, int currentValue, String unit, Function(int) onSave) {
     final TextEditingController controller = TextEditingController(text: currentValue.toString());
@@ -82,11 +127,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: const Text('No', style: TextStyle(color: AppColors.textSubtitle, fontWeight: FontWeight.bold)),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const LoginScreen()), 
-                  (Route<dynamic> route) => false,
-                );
+              onPressed: () async {
+                await AuthService().signOut(); // Actual Firebase Signout
+                if (context.mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const LoginScreen()), 
+                    (Route<dynamic> route) => false,
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
@@ -115,6 +163,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      // Show loading screen while fetching data
+      return Container(
+        color: AppColors.backgroundLight,
+        child: const Center(
+          child: CircularProgressIndicator(color: AppColors.primaryBlue),
+        ),
+      );
+    }
+
     return Container(
       color: AppColors.backgroundLight,
       child: SafeArea(
@@ -193,15 +251,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _buildInfoRow(title: 'FULL NAME', value: _fullName, icon: Icons.badge_outlined, isEditable: false),
                       const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(color: AppColors.bgTabInactive, height: 1)),
                       
+                      // Age is not editable because it depends on the birth date
                       _buildInfoRow(
-                        title: 'AGE', value: '$_age', unit: 'years', icon: Icons.calendar_month_outlined, isEditable: true,
-                        onTap: () => _showEditDialog('Age', _age, 'years', (val) => setState(() => _age = val)),
+                        title: 'AGE', value: '$_age', unit: 'years', icon: Icons.calendar_month_outlined, isEditable: false,
                       ),
                       const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(color: AppColors.bgTabInactive, height: 1)),
                       
+                      // Weight is editable, and it saves to Firebase!
                       _buildInfoRow(
                         title: 'WEIGHT', value: '$_weight', unit: 'kg', icon: Icons.monitor_weight_outlined, isEditable: true,
-                        onTap: () => _showEditDialog('Weight', _weight, 'kg', (val) => setState(() => _weight = val)),
+                        onTap: () => _showEditDialog('Weight', _weight, 'kg', (val) async {
+                          setState(() => _weight = val); // Update UI locally
+                          await AuthService().updateUserData({'weight': val}); // Update Database
+                        }),
                       ),
                       const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(color: AppColors.bgTabInactive, height: 1)),
                       
