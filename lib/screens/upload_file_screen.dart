@@ -3,10 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
+
 import '../constants/app_colors.dart';
 import '../services/database_service.dart';
+import '../services/ocr_service.dart'; 
 import 'dashboard_screen.dart';
-import 'package:permission_handler/permission_handler.dart'; // Permission handler package
 
 class UploadFileScreen extends StatefulWidget {
   const UploadFileScreen({super.key});
@@ -16,33 +18,21 @@ class UploadFileScreen extends StatefulWidget {
 }
 
 class _UploadFileScreenState extends State<UploadFileScreen> {
-  // State variables for file handling
   bool _isFileSelected = false;
+  bool _isProcessing = false; 
   String _fileName = '';
   String _fileSize = '';
   File? _selectedFile;
   
   final ImagePicker _picker = ImagePicker();
 
-  // Handle permission requests for Camera and Gallery
   Future<bool> _requestPermission(Permission permission) async {
     final status = await permission.request();
-    
-    if (status.isGranted) {
-      return true;
-    } else if (status.isPermanentlyDenied) {
-      // If user denied permanently, redirect to app settings
-      if (mounted) {
-        _showSettingsDialog();
-      }
-      return false;
-    } else {
-      // Permission denied
-      return false;
-    }
+    if (status.isGranted) return true;
+    if (status.isPermanentlyDenied && mounted) _showSettingsDialog();
+    return false;
   }
 
-  // Show dialog to direct user to system settings
   void _showSettingsDialog() {
     showDialog(
       context: context,
@@ -57,13 +47,10 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
     );
   }
 
-  // Updated Upload Options Sheet with Permission Check
   void _showUploadOptionsSheet() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       backgroundColor: Colors.white,
       builder: (BuildContext context) {
         return Padding(
@@ -73,36 +60,30 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
             children: [
               const Text('Select Source', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
               const SizedBox(height: 24),
-              // Camera Option with Permission handling
               ListTile(
                 leading: const Icon(Icons.camera_alt_outlined, color: AppColors.primaryBlue),
                 title: const Text('Camera', style: TextStyle(fontWeight: FontWeight.w600)),
                 onTap: () async {
                   Navigator.pop(context);
-                  bool granted = await _requestPermission(Permission.camera);
-                  if (granted) _pickImage(ImageSource.camera);
+                  if (await _requestPermission(Permission.camera)) _pickImage(ImageSource.camera);
                 },
               ),
               const Divider(height: 1),
-              // Gallery Option with Permission handling
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined, color: AppColors.primaryBlue),
                 title: const Text('Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
                 onTap: () async {
                   Navigator.pop(context);
-                  // For Android 13+ it uses photos permission, for older it uses storage
-                  bool granted = await _requestPermission(Permission.photos);
-                  if (granted) _pickImage(ImageSource.gallery);
+                  if (await _requestPermission(Permission.photos)) _pickImage(ImageSource.gallery);
                 },
               ),
               const Divider(height: 1),
-              // Document/Files Option
               ListTile(
                 leading: const Icon(Icons.folder_open_outlined, color: AppColors.primaryBlue),
                 title: const Text('Files (PDF/Images)', style: TextStyle(fontWeight: FontWeight.w600)),
                 onTap: () async {
                   Navigator.pop(context);
-                  _pickDocument(); // FilePicker handles its own permissions mostly
+                  _pickDocument(); 
                 },
               ),
             ],
@@ -112,39 +93,28 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
     );
   }
 
-  // Existing pick image logic
   Future<void> _pickImage(ImageSource source) async {
     final XFile? pickedFile = await _picker.pickImage(source: source);
     if (pickedFile != null) {
       File file = File(pickedFile.path);
-      int sizeInBytes = await file.length();
-      double sizeInMb = sizeInBytes / (1024 * 1024);
-
       setState(() {
         _isFileSelected = true;
         _selectedFile = file;
         _fileName = pickedFile.name;
-        _fileSize = '${sizeInMb.toStringAsFixed(2)} MB';
+        _fileSize = '${(file.lengthSync() / (1024 * 1024)).toStringAsFixed(2)} MB';
       });
     }
   }
 
-  // Existing pick document logic
   Future<void> _pickDocument() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-    );
-
+    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf']);
     if (result != null && result.files.single.path != null) {
       File file = File(result.files.single.path!);
-      final double sizeInMb = file.lengthSync() / (1024 * 1024);
-      
       setState(() {
         _isFileSelected = true;
         _selectedFile = file;
         _fileName = result.files.first.name;
-        _fileSize = '${sizeInMb.toStringAsFixed(2)} MB';
+        _fileSize = '${(file.lengthSync() / (1024 * 1024)).toStringAsFixed(2)} MB';
       });
     }
   }
@@ -158,9 +128,82 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
     });
   }
 
-  // Manual Entry sheet logic (Kept unchanged)
+  Future<void> _processFileWithOCR() async {
+    if (_selectedFile == null) return;
+    if (_fileName.toLowerCase().endsWith('.pdf')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Auto-scan is only available for Images.'), backgroundColor: Colors.orange));
+      _showManualEntrySheet();
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+    final resultMap = await OcrService().processMedicalImage(_selectedFile!);
+    if (!mounted) return;
+    setState(() => _isProcessing = false);
+
+    if (resultMap != null) {
+      _showOCRConfirmationDialog(resultMap);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not detect exact results.'), backgroundColor: Colors.orange));
+      _showManualEntrySheet();
+    }
+  }
+
+  void _showOCRConfirmationDialog(Map<String, dynamic> resultMap) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog( 
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Result Found! 🤖', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
+        content: RichText(
+          text: TextSpan(
+            style: const TextStyle(color: AppColors.textSubtitle, fontSize: 15, height: 1.5),
+            children: [
+              const TextSpan(text: 'We scanned your document and found:\n\n'),
+              TextSpan(text: '${resultMap['testType']}: ', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
+              TextSpan(text: '${resultMap['result']} ${resultMap['unit']}\n\n', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryBlue, fontSize: 18)),
+              const TextSpan(text: 'Is this correct?'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext); 
+              _showManualEntrySheet(); 
+            },
+            child: const Text('No, Edit', style: TextStyle(color: AppColors.textSubtitle, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext); 
+              setState(() => _isProcessing = true);
+              
+              bool success = await DatabaseService().saveManualReading(
+                testType: resultMap['testType'],
+                result: resultMap['result'],
+                source: 'OCR Scanner', 
+              );
+
+              if (!mounted) return; 
+              setState(() => _isProcessing = false);
+              if (success) {
+                Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save to database.')));
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+            child: const Text('Yes, Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showManualEntrySheet() {
-    String selectedTest = 'Fasting Blood Sugar';
+    String selectedTest = 'HbA1C'; 
     final TextEditingController valueController = TextEditingController();
     bool isSaving = false;
 
@@ -172,7 +215,7 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             String unitText = selectedTest == 'HbA1C' ? '%' : 'mg/dL';
-            String hintText = selectedTest == 'HbA1C' ? 'e.g. 5.7' : 'e.g. 95';
+            String hintText = selectedTest == 'HbA1C' ? 'Enter HbA1c' : 'Enter Fasting Sugar';
 
             return Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -240,7 +283,7 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
                       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                       decoration: InputDecoration(
                         hintText: hintText,
-                        hintStyle: TextStyle(color: AppColors.textSubtitle.withValues(alpha: 0.5)),
+                        hintStyle: TextStyle(color: AppColors.textSubtitle.withValues(alpha: 0.4)),
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -295,7 +338,13 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: AppBar(backgroundColor: AppColors.backgroundLight, elevation: 0, automaticallyImplyLeading: false),
+      appBar: AppBar(
+        backgroundColor: AppColors.backgroundLight, elevation: 0, 
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textMainTitle),
+          onPressed: () => Navigator.canPop(context) ? Navigator.pop(context) : Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DashboardScreen())),
+        )
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
@@ -306,7 +355,7 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
               const SizedBox(height: 12),
               const Text('Please upload a JPG, PNG, or PDF of your blood test results.', style: TextStyle(fontSize: 15, color: AppColors.textSubtitle, height: 1.5)),
               const SizedBox(height: 32),
-              // Upload Container
+              
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 24.0),
@@ -337,7 +386,7 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-              // Selected File Preview
+              
               if (_isFileSelected) ...[
                 Container(
                   padding: const EdgeInsets.all(16.0),
@@ -362,28 +411,30 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
                 ),
                 const SizedBox(height: 24),
               ],
-              // Security Notice
-              Row(
-                children: const [
-                  Icon(Icons.lock_outline, color: AppColors.textSubtitle, size: 18),
-                  SizedBox(width: 8),
-                  Text('Your data is encrypted and secure.', style: TextStyle(color: AppColors.textSubtitle, fontSize: 13)),
-                ],
-              ),
-              const SizedBox(height: 24),
-              // Submit Button
+              
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _isFileSelected ? () {
-                    debugPrint('Processing File: ${_selectedFile?.path}');
-                    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
-                  } : null,
+                  onPressed: _isFileSelected && !_isProcessing ? _processFileWithOCR : null,
                   style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, disabledBackgroundColor: AppColors.primaryBlue.withValues(alpha: 0.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-                  child: const Text('Submit Results', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                  child: _isProcessing 
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Submit Results', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                 ),
               ),
+              const SizedBox(height: 16),
+              
+              // Security Note centered under the button
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.lock_outline, color: AppColors.textSubtitle, size: 16),
+                  SizedBox(width: 6),
+                  Text('Your data is encrypted and secure.', style: TextStyle(color: AppColors.textSubtitle, fontSize: 12)),
+                ],
+              ),
+              const SizedBox(height: 24),
             ],
           ),
         ),
