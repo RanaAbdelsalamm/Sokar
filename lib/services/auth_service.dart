@@ -23,7 +23,7 @@ class AuthService {
     return null;
   }
 
-  // 2. Update specific user field in Firestore (e.g., Weight)
+  // 2. Update specific user field in Firestore (e.g., Weight, Height, BMI)
   Future<void> updateUserData(Map<String, dynamic> dataToUpdate) async {
     try {
       User? currentUser = _auth.currentUser;
@@ -58,14 +58,18 @@ class AuthService {
     }
   }
 
-  // 6. Registration Logic
+  // 6. Registration Logic (UPDATED WITH HEIGHT, BMI, AND MEDICAL QUESTIONS)
   Future<String> signUpUser({
     required String name,
     required String email,
     required String password,
     required double weight,
+    required double height,
     required DateTime birthDate,
-    required String gender,
+    required int gender, // 0 = Female, 1 = Male
+    required int smokingHistory, // 0 = never, 1 = former, 2 = current
+    required int hypertension, // 0 = No, 1 = Yes
+    required int heartDisease, // 0 = No, 1 = Yes
   }) async {
     String res = "An error occurred";
     try {
@@ -76,12 +80,21 @@ class AuthService {
 
       await userCredential.user!.sendEmailVerification();
 
+      // BMI Calculation Logic (Height is in cm, convert to meters)
+      double heightInMeters = height / 100;
+      double calculatedBmi = weight / (heightInMeters * heightInMeters);
+
       await _firestore.collection('users').doc(userCredential.user!.uid).set({
         'name': name,
         'email': email,
         'weight': weight,
+        'height': height,
+        'bmi': double.parse(calculatedBmi.toStringAsFixed(2)), // Clean format
         'birthDate': birthDate,
-        'gender': gender,
+        'gender': gender, // Saving as 0 or 1 directly for the ML Model
+        'smoking_history': smokingHistory,
+        'hypertension': hypertension,
+        'heart_disease': heartDisease,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -107,12 +120,10 @@ class AuthService {
     required String email,
     required String password,
   }) async {
+    // ... existing login logic remains the same
     String res = "An error occurred";
     try {
-      await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
       res = "Success";
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
@@ -128,6 +139,7 @@ class AuthService {
 
   // 8. Reset Password Logic
   Future<String> resetPassword({required String email}) async {
+    // ... existing reset logic remains the same
     String res = "An error occurred";
     try {
       await _auth.sendPasswordResetEmail(email: email);
