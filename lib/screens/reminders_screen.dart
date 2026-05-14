@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../constants/app_colors.dart';
+import '../services/database_service.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 
 // --- Local Notifications Setup ---
@@ -14,14 +17,14 @@ Future<void> initializeNotifications() async {
   tz.initializeTimeZones();
   
   try {
-    final TimezoneInfo currentTimeZone = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(currentTimeZone as String));
+    final currentTimeZone = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(currentTimeZone.toString()));
   } catch (e) {
     tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
   }
   
-const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('notification_icon');
-const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings();
+  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('notification_icon');
+  const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings();
   
   const InitializationSettings initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
@@ -66,6 +69,7 @@ Future<void> scheduleNotification(int id, String title, String body, TimeOfDay t
 // --- Reminder Models ---
 class MedReminder {
   final String id;
+  final int notifId; 
   final IconData icon;
   final String title;
   final String dosage;
@@ -83,6 +87,7 @@ class MedReminder {
 
   MedReminder({
     required this.id,
+    required this.notifId,
     required this.icon,
     required this.title,
     required this.dosage,
@@ -111,27 +116,66 @@ class RemindersScreen extends StatefulWidget {
 class RemindersScreenState extends State<RemindersScreen> {
   int _selectedTabIndex = 0;
   final PageController _pageController = PageController();
+  
+  final DatabaseService _db = DatabaseService();
+  StreamSubscription<QuerySnapshot>? _remindersSub;
 
-  final List<MedReminder> _reminders = [
-    MedReminder(
-      id: '1',
-      icon: Icons.medication,
-      title: 'Metformin',
-      dosage: '500 mg',
-      time: const TimeOfDay(hour: 8, minute: 0),
-      date: DateTime.now(),
-      isDaily: true,
-    ),
-  ];
+  final List<MedReminder> _reminders = [];
 
   @override
   void initState() {
     super.initState();
     initializeNotifications();
+    _listenToReminders();
+  }
+
+  void _listenToReminders() {
+    _remindersSub = _db.getRemindersStream().listen((snapshot) {
+      final List<MedReminder> loaded = [];
+      for (var doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        
+        IconData icon = Icons.medication;
+        if (data['type'] == 'Insulin') icon = Icons.vaccines_outlined;
+        if (data['type'] == 'Liquid') icon = Icons.water_drop_outlined;
+
+        Map<String, bool> historyMap = {};
+        if (data['history'] is Map) {
+          (data['history'] as Map).forEach((k, v) => historyMap[k.toString()] = v == true);
+        }
+
+        // Parse notifId or generate a fallback one for older data
+        int parsedNotifId = data['notifId'] ?? doc.id.hashCode.abs().remainder(100000);
+
+        loaded.add(MedReminder(
+          id: doc.id,
+          notifId: parsedNotifId,
+          icon: icon,
+          title: data['title'] ?? '',
+          dosage: data['dosage'] ?? '',
+          time: TimeOfDay(hour: data['timeHour'] ?? 8, minute: data['timeMinute'] ?? 0),
+          date: data['date'] is Timestamp ? (data['date'] as Timestamp).toDate() : DateTime.now(),
+          isDaily: data['isDaily'] ?? false,
+          repeatDays: data['repeatDays'] != null ? List<int>.from(data['repeatDays']) : [],
+          isActive: data['isActive'] ?? true,
+          history: historyMap,
+          inactiveDates: data['inactiveDates'] != null ? Set<String>.from(data['inactiveDates']) : {},
+          deletedDates: data['deletedDates'] != null ? Set<String>.from(data['deletedDates']) : {},
+        ));
+      }
+      
+      if (mounted) {
+        setState(() {
+          _reminders.clear();
+          _reminders.addAll(loaded);
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _remindersSub?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -260,7 +304,6 @@ class RemindersScreenState extends State<RemindersScreen> {
 
   void showAddReminderSheet(BuildContext context) {
     String selectedType = 'Pill';
-    IconData selectedIcon = Icons.medication;
     final TextEditingController nameController = TextEditingController();
     final TextEditingController dosageController = TextEditingController();
     TimeOfDay selectedTime = TimeOfDay.now();
@@ -310,9 +353,9 @@ class RemindersScreenState extends State<RemindersScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _buildTypeOption(setSheetState, 'Pill', Icons.medication, selectedType, () { selectedType = 'Pill'; selectedIcon = Icons.medication; }),
-                                _buildTypeOption(setSheetState, 'Insulin', Icons.vaccines_outlined, selectedType, () { selectedType = 'Insulin'; selectedIcon = Icons.vaccines_outlined; }),
-                                _buildTypeOption(setSheetState, 'Liquid', Icons.water_drop_outlined, selectedType, () { selectedType = 'Liquid'; selectedIcon = Icons.water_drop_outlined; }),
+                                _buildTypeOption(setSheetState, 'Pill', Icons.medication, selectedType, () { selectedType = 'Pill'; }),
+                                _buildTypeOption(setSheetState, 'Insulin', Icons.vaccines_outlined, selectedType, () { selectedType = 'Insulin'; }),
+                                _buildTypeOption(setSheetState, 'Liquid', Icons.water_drop_outlined, selectedType, () { selectedType = 'Liquid'; }),
                               ],
                             ),
                             const SizedBox(height: 24),
@@ -435,24 +478,29 @@ class RemindersScreenState extends State<RemindersScreen> {
                       child: ElevatedButton(
                         onPressed: () {
                           if (nameController.text.isNotEmpty && dosageController.text.isNotEmpty) {
-                            String newId = DateTime.now().toString();
                             String dosageText = '${dosageController.text} $unitText';
                             
-                            setState(() {
-                              _reminders.add(MedReminder(
-                                id: newId,
-                                icon: selectedIcon,
-                                title: nameController.text,
-                                dosage: dosageText,
-                                time: selectedTime,
-                                date: DateTime.now(), 
-                                isDaily: isDaily,
-                                repeatDays: repeatDays,
-                              ));
+                            // Generate a unique ID for the notification directly at creation time
+                            int uniqueNotifId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+                            
+                            _db.addReminder({
+                              'notifId': uniqueNotifId, // Save the ID to database
+                              'title': nameController.text,
+                              'dosage': dosageText,
+                              'type': selectedType,
+                              'timeHour': selectedTime.hour,
+                              'timeMinute': selectedTime.minute,
+                              'date': Timestamp.fromDate(DateTime.now()),
+                              'isDaily': isDaily,
+                              'repeatDays': repeatDays,
+                              'isActive': true,
+                              'history': {},
+                              'deletedDates': [],
+                              'inactiveDates': [],
                             });
                             
                             scheduleNotification(
-                              DateTime.now().millisecondsSinceEpoch.remainder(100000), 
+                              uniqueNotifId, 
                               'Time for your Medication!', 
                               'It\'s time to take $dosageText of ${nameController.text}.', 
                               selectedTime
@@ -584,15 +632,13 @@ class RemindersScreenState extends State<RemindersScreen> {
           continue;
         }
 
-        bool isHistory = med.history.containsKey(dateKey);
-        
-        if (onlyPending && isHistory) {
+        // Move to history if already interacted with
+        if (onlyPending && med.history.containsKey(dateKey)) {
           current = current.add(const Duration(days: 1));
           continue;
         }
         
         bool shouldAdd = false;
-        
         if (med.isDaily) {
           shouldAdd = true;
         } else if (med.repeatDays.isNotEmpty) {
@@ -608,6 +654,7 @@ class RemindersScreenState extends State<RemindersScreen> {
         if (shouldAdd) {
           instances.add(MedReminder(
             id: '${med.id}_$dateKey',
+            notifId: med.notifId, // Pass the unique ID
             icon: med.icon,
             title: med.title,
             dosage: med.dosage,
@@ -712,19 +759,52 @@ class RemindersScreenState extends State<RemindersScreen> {
 
   Widget _buildHistoryView() {
     List<MedReminder> historyMeds = [];
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+
     for (var med in _reminders) {
-      med.history.forEach((dateKey, isTaken) {
-        final parts = dateKey.split('-');
-        DateTime d = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+      DateTime medStart = DateTime(med.date.year, med.date.month, med.date.day);
+      DateTime current = medStart;
+      
+      while (current.isBefore(todayMidnight.add(const Duration(days: 1)))) {
+        String dateKey = '${current.year}-${current.month.toString().padLeft(2,'0')}-${current.day.toString().padLeft(2,'0')}';
         
-        if (!med.deletedDates.contains(dateKey)) {
-          historyMeds.add(MedReminder(
-            id: '${med.id}_$dateKey',
-            icon: med.icon, title: med.title, dosage: med.dosage, time: med.time, date: d,
-            isDaily: med.isDaily, repeatDays: med.repeatDays, isTaken: isTaken,
-          ));
+        if (med.deletedDates.contains(dateKey)) {
+          current = current.add(const Duration(days: 1));
+          continue;
         }
-      });
+
+        bool shouldAdd = false;
+        if (med.isDaily) {
+          shouldAdd = true;
+        } else if (med.repeatDays.isNotEmpty && med.repeatDays.contains(current.weekday)) {
+          shouldAdd = true;
+        } else if (current.isAtSameMomentAs(medStart)) {
+          shouldAdd = true;
+        }
+
+        if (shouldAdd) {
+          bool? isTaken;
+          
+          if (med.history.containsKey(dateKey)) {
+            // Evaluated explicitly by user
+            isTaken = med.history[dateKey];
+          } else if (current.isBefore(todayMidnight)) {
+            // Marked as missed if day has passed
+            isTaken = false; 
+          }
+
+          if (isTaken != null) {
+            historyMeds.add(MedReminder(
+              id: '${med.id}_$dateKey',
+              notifId: med.notifId,
+              icon: med.icon, title: med.title, dosage: med.dosage, time: med.time, date: current,
+              isDaily: med.isDaily, repeatDays: med.repeatDays, isTaken: isTaken,
+            ));
+          }
+        }
+        current = current.add(const Duration(days: 1));
+      }
     }
     
     historyMeds.sort((a, b) {
@@ -768,16 +848,18 @@ class RemindersScreenState extends State<RemindersScreen> {
         ),
         
         onDismissed: (direction) {
+          String parentId = med.id.split('_')[0];
+          String dateKey = med.id.split('_')[1];
+          bool isTaken = (direction == DismissDirection.endToStart);
+          
+          _db.updateReminderField(parentId, {'history.$dateKey': isTaken});
+          
+          // Cancel the notification using the unique ID
+          final originalMed = _reminders.firstWhere((r) => r.id == parentId);
+          flutterLocalNotificationsPlugin.cancel(id: originalMed.notifId);
+
           setState(() {
-            String parentId = med.id.split('_')[0];
-            String dateKey = med.id.split('_')[1];
-            final originalMed = _reminders.firstWhere((r) => r.id == parentId);
-            
-            if (direction == DismissDirection.startToEnd) {
-              originalMed.history[dateKey] = false; 
-            } else {
-              originalMed.history[dateKey] = true;  
-            }
+            originalMed.history[dateKey] = isTaken;
           });
         },
         child: Container(
@@ -793,11 +875,32 @@ class RemindersScreenState extends State<RemindersScreen> {
                   CupertinoSwitch(
                     value: med.isActive, 
                     onChanged: (val) {
+                      String parentId = med.id.split('_')[0];
+                      String dateKey = med.id.split('_')[1];
+                      final originalMed = _reminders.firstWhere((r) => r.id == parentId);
+                      
+                      List<String> updatedInactive = List<String>.from(originalMed.inactiveDates);
+                      if (val) {
+                        updatedInactive.remove(dateKey);
+                      } else {
+                        updatedInactive.add(dateKey);
+                      }
+                      
+                      _db.updateReminderField(parentId, {'inactiveDates': updatedInactive});
+                      
+                      // Notification logic correctly maps to the exact unique ID 
+                      if (val) {
+                        scheduleNotification(
+                          originalMed.notifId,
+                          'Time for your Medication!',
+                          'It\'s time to take ${originalMed.dosage} of ${originalMed.title}.',
+                          originalMed.time
+                        );
+                      } else {
+                        flutterLocalNotificationsPlugin.cancel(id: originalMed.notifId);
+                      }
+                      
                       setState(() {
-                        String parentId = med.id.split('_')[0];
-                        String dateKey = med.id.split('_')[1];
-                        final originalMed = _reminders.firstWhere((r) => r.id == parentId);
-                        
                         if (val) {
                           originalMed.inactiveDates.remove(dateKey);
                         } else {
@@ -831,11 +934,19 @@ class RemindersScreenState extends State<RemindersScreen> {
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     onPressed: () {
+                      String parentId = med.id.split('_')[0];
+                      String dateKey = med.id.split('_')[1];
+                      final originalMed = _reminders.firstWhere((r) => r.id == parentId);
+                      
+                      List<String> updatedDeleted = List<String>.from(originalMed.deletedDates);
+                      updatedDeleted.add(dateKey);
+                      
+                      _db.updateReminderField(parentId, {'deletedDates': updatedDeleted});
+                      
+                      // Cancel exact notification instantly
+                      flutterLocalNotificationsPlugin.cancel(id: originalMed.notifId);
+
                       setState(() {
-                        String parentId = med.id.split('_')[0];
-                        String dateKey = med.id.split('_')[1];
-                        final originalMed = _reminders.firstWhere((r) => r.id == parentId);
-                        
                         originalMed.deletedDates.add(dateKey);
                       });
                     },
