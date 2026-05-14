@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
-import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '../constants/app_colors.dart';
 import '../services/auth_service.dart';
@@ -23,8 +21,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _age = 0; 
   int _weight = 0;
   int _height = 0; 
-  
-  File? _profileImage;
 
   @override
   void initState() {
@@ -187,7 +183,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryBlue, // Changed to match Upload Dialog
+                backgroundColor: AppColors.primaryBlue,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
               ),
@@ -197,15 +193,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
-  }
-
-  Future<void> _openGallery() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.image);
-    if (result != null && result.files.single.path != null) {
-      setState(() {
-        _profileImage = File(result.files.single.path!);
-      });
-    }
   }
 
   @override
@@ -244,29 +231,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
                 
-                Stack(
-                  alignment: Alignment.bottomRight,
-                  children: [
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
-                        image: _profileImage != null ? DecorationImage(image: FileImage(_profileImage!), fit: BoxFit.cover) : null,
-                      ),
-                      child: _profileImage == null ? const Icon(Icons.person, size: 60, color: AppColors.primaryBlue) : null,
-                    ),
-                    GestureDetector(
-                      onTap: _openGallery,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(color: AppColors.primaryBlue, shape: BoxShape.circle),
-                        child: const Icon(Icons.edit, color: Colors.white, size: 16),
-                      ),
-                    ),
-                  ],
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
+                  ),
+                  child: const Icon(Icons.person, size: 60, color: AppColors.primaryBlue),
                 ),
                 const SizedBox(height: 16),
                 Text(_firstName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
