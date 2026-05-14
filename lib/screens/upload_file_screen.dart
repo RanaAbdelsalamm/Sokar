@@ -155,7 +155,7 @@ class _UploadFileScreenState extends State<UploadFileScreen> {
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog( 
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Result Found! 🤖', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
+        title: const Text('Result Found! ', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textMainTitle)),
         content: RichText(
           text: TextSpan(
             style: const TextStyle(color: AppColors.textSubtitle, fontSize: 15, height: 1.5),
