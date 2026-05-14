@@ -47,6 +47,8 @@ dependencies:
   cloud_firestore: ^6.3.0
   image_picker: ^1.2.2
   google_mlkit_text_recognition: ^0.15.1
+  http: ^1.6.0
+  dartz: ^0.10.1
 
 dev_dependencies:
   flutter_test:
@@ -73,7 +75,8 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/models/sokar_model.tflite
+    - assets/models/HbA1c_Final_Estimator.tflite
+    - assets/models/Diabetes_Risk_Classifier.tflite
     - assets/images/
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
